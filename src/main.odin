@@ -2,8 +2,8 @@ package main
 
 import "core:runtime"
 // import "core:fmt"
-import "core:math/rand"
 import "core:math"
+import "core:math/rand"
 import "core:mem"
 import "core:slice"
 // import rl "vendor:raylib"
@@ -31,18 +31,18 @@ timer: f32
 GRAVITY :: Vec3{0, -40, 0}
 
 player := Player{}
-camera : rl.Camera3D
+camera: rl.Camera3D
 
 Block :: struct {
 	using position: Position,
-	size: Vec3,
-	isPlaform: bool
+	size:           Vec3,
+	isPlaform:      bool,
 }
 
 Platform :: Block
 
-blocks_buffer : [256]Block
-blocks : [dynamic]Block
+blocks_buffer: [256]Block
+blocks: [dynamic]Block
 
 
 backgroundMesh: rl.Mesh
@@ -67,7 +67,14 @@ _main :: proc "c" () {
 	rl.SetTargetFPS(60)
 	rand.set_global_seed(1)
 
-	checkerImage := rl.GenImageChecked(64, 64, 4, 4, rl.ColorFromHSV(280, 0.5, 0.4), rl.ColorFromHSV(280, 0.5, 0.5))
+	checkerImage := rl.GenImageChecked(
+		64,
+		64,
+		4,
+		4,
+		rl.ColorFromHSV(280, 0.5, 0.4),
+		rl.ColorFromHSV(280, 0.5, 0.5),
+	)
 	backgroundTexture = rl.LoadTextureFromImage(checkerImage)
 	rl.UnloadImage(checkerImage)
 	backgroundMesh = rl.GenMeshPlane(1, 1, 2, 2)
@@ -77,11 +84,11 @@ _main :: proc "c" () {
 	floorModel = rl.LoadModel("assets/floor.obj")
 	wallModel = rl.LoadModel("assets/wall.obj")
 	platformModel = rl.LoadModel("assets/platform.obj")
+	zombieTex = rl.LoadTexture("assets/zombie.png")
 
 
-	
 	player.y = 2
-	player.size = {1,1,1}
+	player.size = {1, 1, 1}
 	player.sprite = rl.LoadTexture("assets/player.png")
 	player.spr_hand = rl.LoadTexture("assets/hand.png")
 
@@ -90,20 +97,25 @@ _main :: proc "c" () {
 	camera.up = Vec3{0, 1, 0}
 	camera.fovy = 40
 	camera.projection = rl.CameraProjection.PERSPECTIVE
-	
+
 	blocks = slice.into_dynamic(blocks_buffer[:])
+	zombies = slice.into_dynamic(zombies_buf[:])
 
 
-	ground := Block{
+	ground := Block {
 		position = Vec3{0, -10, 0},
-		size = Vec3{40, 20, 6},
+		size     = Vec3{40, 20, 6},
 	}
 
 	append(&blocks, Block{position = {-19, 11, 0}, size = {2, 20, 2}})
 	append(&blocks, Block{position = {19, 11, 0}, size = {2, 20, 2}})
 	append(&blocks, ground)
 
-	append(&blocks, Block{{0, 2, 0}, {5, 0.4, 1}, true})
+	append(&blocks, Block{{0, 3.5, 0}, {5, 0.4, 1}, true})
+	append(&blocks, Block{{9, 5, 0}, {5, 0.4, 1}, true})
+	append(&blocks, Block{{-9, 5, 0}, {5, 0.4, 1}, true})
+
+	zombie_spawn({0, 5, 0})
 
 	rl.rlDisableBackfaceCulling()
 	// wasm_testing()
@@ -122,7 +134,7 @@ update :: proc() {
 
 	player_update(&player, delta)
 	camera.position = player.position + Vec3{0, 0, 16}
-	camera.target = player.position 
+	camera.target = player.position
 
 	rl.BeginDrawing()
 	rl.BeginMode3D(camera)
@@ -130,7 +142,7 @@ update :: proc() {
 	rl.rlPushMatrix()
 	rl.rlTranslatef(0, 0, -20)
 	rl.rlRotatef(90, 1, 0, 0)
-	rl.rlScalef(100,100,100)
+	rl.rlScalef(100, 100, 100)
 	rl.DrawMesh(backgroundMesh, backgroundMat, rl.Matrix(1))
 	rl.rlPopMatrix()
 
@@ -141,9 +153,18 @@ update :: proc() {
 		}
 	}
 
+	for &zombie in zombies {
+		zombie_update(&zombie, delta)
+	}
+
+	m := rl.MatrixRotate({1, 1, 1}, 0.9)
+	vec := rl.Vector3Transform({5, 0, 0}, m)
+	rl.DrawSphere(vec, .5, rl.YELLOW)
+
 
 	rl.rlPushMatrix()
 	rl.rlTranslatef(player.position.x, player.position.y, player.position.z)
+	rl.rlRotatef(player.rotation, 0, 0, 1)
 	if player.flip {
 		rl.rlScalef(-1, 1, 1)
 	}
@@ -152,6 +173,7 @@ update :: proc() {
 		rl.rlScalef(-1, 1, 1)
 	}
 	rl.rlTranslatef(0, 0.15, 0)
+	rl.rlRotatef(-player.rotation, 0, 0, 1)
 	rl.rlRotatef(math.to_degrees(player.direction), 0, 0, 1)
 	if player.flip {
 		rl.rlScalef(1, -1, 1)
@@ -159,8 +181,11 @@ update :: proc() {
 	rl.DrawBillboard(camera, player.spr_hand, {0.5, 0, 0}, 1, rl.WHITE)
 	rl.rlPopMatrix()
 
+	for &zombie in zombies {
+		zombie_draw(&zombie)
+	}
 
-	for i in -10..<10 {
+	for i in -10 ..< 10 {
 		rl.DrawModel(floorModel, {f32(i) * 8, 0, 0}, 8, rl.WHITE)
 	}
 	rl.DrawModel(wallModel, {-18, 0, 0}, 8, rl.WHITE)
@@ -172,12 +197,13 @@ update :: proc() {
 	rl.rlPopMatrix()
 	rl.rlSetCullFace(rl.CullMode.BACK)
 
+
 	// start := player.position.xy
 	// end := player.position.xy + {player.jump_force.x, 0}
 	// step := abs(end.x - start.x) / 30
 	// dir := math.sign(end.x - start.x)
 	// jf := Vec2{abs(player.jump_force.x), player.jump_force.y}
-	
+
 	// if player.is_dragging {
 	// 	trajectory_y : f32 = 0
 	// 	i := 0
@@ -204,12 +230,25 @@ update :: proc() {
 	// }
 
 
-
 	rl.EndMode3D()
 
-	rl.DrawText(rl.TextFormat("%f \t %f", player.velocity.x, player.velocity.y), 0, 0, 24, rl.RAYWHITE)
-	rl.DrawText(rl.TextFormat("%f \t %f", player.position.x, player.position.y), 0, 20, 24, rl.RAYWHITE)
+	rl.DrawText(
+		rl.TextFormat("%f \t %f", player.velocity.x, player.velocity.y),
+		0,
+		0,
+		20,
+		rl.RAYWHITE,
+	)
+	rl.DrawText(
+		rl.TextFormat("%f \t %f", player.position.x, player.position.y),
+		0,
+		20,
+		20,
+		rl.RAYWHITE,
+	)
+	rl.DrawText(rl.TextFormat("is on floor: %v", player.is_on_floor), 0, 40, 20, rl.RAYWHITE)
 	rl.EndDrawing()
 
 
 }
+
