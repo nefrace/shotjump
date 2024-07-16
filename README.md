@@ -1,5 +1,7 @@
 # ShotgunJump: a game for [Pashtet Jam #4](https://itch.io/jam/pashtet-jam-4) built as an experiment using Raylib + Odin on web.
 
+[Link to the game](https://nefrace.itch.io/shotgunjump)
+
 The raylib-wasm-odin project is based on [Cadeo](https://github.com/Caedo/raylib_wasm_odin)'s repo.
 
 ## Build (tested only on Linux)
