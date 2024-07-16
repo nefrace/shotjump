@@ -4,4 +4,4 @@ The raylib-wasm-odin project is based on [Cadeo](https://github.com/Caedo/raylib
 
 ## Build (tested only on Linux)
 
-Just run `build.sh` to build the game and then run any web-server to serve `./build` directory. You need to have Emscripten installed in your system.
+Just run `build.sh` to build the game, place the `index.html` into the `build` directory and then run any web-server to serve that directory. You need to have Emscripten installed in your system.
